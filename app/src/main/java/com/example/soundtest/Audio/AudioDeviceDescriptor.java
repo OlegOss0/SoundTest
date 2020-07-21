@@ -1,61 +1,44 @@
 package com.example.soundtest.Audio;
 
+import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothProfile;
+import android.bluetooth.BluetoothProfile.ServiceListener;
+import android.bluetooth.BluetoothSocket;
 import android.media.AudioAttributes;
 import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
+import android.media.AudioRecord;
 import android.media.AudioTrack;
 import android.os.Build;
+import android.os.ParcelUuid;
 import android.util.Log;
 
 import com.example.soundtest.App;
 
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.UUID;
 
 public class AudioDeviceDescriptor {
 
 
-    public int getBuffSize() {
-        int buff = 0;
-        if(isBluetooth){
-
-        }else{
-            int[] rates = mAudioDeviceInfo.getSampleRates();
-            int[] channels = mAudioDeviceInfo.getChannelMasks();
-            int[] channelsCount = mAudioDeviceInfo.getChannelCounts();
-            int[] encoding = mAudioDeviceInfo.getEncodings();
-            this.currRate = rates[rates.length - 1];
-            buff = AudioTrack.getMinBufferSize(currRate, (mAudioDeviceInfo.getChannelMasks())[0], (mAudioDeviceInfo.getEncodings())[0]);
-
-        }
-        return buff;
+    public int getEncoding(){
+        return encoding;
     }
 
-    private boolean isValid(){
-        boolean b = mAudioDeviceInfo.getSampleRates().length > 0;
-        return b;
-    }
-
-    public AudioAttributes getAudioAttributes(){
-        return  new AudioAttributes.Builder() .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                .build();
-    }
-
-    public AudioFormat getAudioFormat(){
-        return new AudioFormat.Builder()
-                .setChannelMask(mAudioDeviceInfo.getChannelMasks()[0])
-                .setEncoding(mAudioDeviceInfo.getEncodings()[0])
-                .setSampleRate(currRate)
-                .build();
+    public int getChannelConfig() {
+        return curChannel;
     }
 
     public enum DeviceType {isSink, isSource}
 
+    private UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
     private int currRate;
+    private int curChannel;
+    private int channelsCount;
+    private int encoding;
     private int sessionId = -1;
     private UUID uuid;
     private final String TAG = this.getClass().getSimpleName();
@@ -69,31 +52,25 @@ public class AudioDeviceDescriptor {
     private boolean isBluetooth = false;
     private String mAddress = "";
     private BluetoothDevice bluetoothDevice;
+    private MyServiceListener mServiceListener;
+
 
     public AudioDeviceDescriptor(final AudioDeviceInfo audioDeviceInfo) {
         try {
             this.mAudioDeviceInfo = audioDeviceInfo;
             this.mType = audioDeviceInfo.getType();
-            this.isBluetooth = mType == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP
-                    || mType == AudioDeviceInfo.TYPE_BLUETOOTH_SCO;
-            if(!isValid()){
-                isBadParams = true;
-                return;
-            }
+            this.isBluetooth = mType == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP || mType == AudioDeviceInfo.TYPE_BLUETOOTH_SCO;
             this.mAddress = getAddress(audioDeviceInfo);
-            if (isBluetooth) {
-                BluetoothAdapter.getDefaultAdapter().getProfileProxy(App.getAppContext(), new BluetoothProfile.ServiceListener() {
-                    @Override
-                    public void onServiceConnected(int profile, BluetoothProfile proxy) {
-                        Log.i(TAG, "onServiceConnected");
-                    }
+            this.deviceType = audioDeviceInfo.isSink() ? DeviceType.isSink : DeviceType.isSource;
 
-                    @Override
-                    public void onServiceDisconnected(int profile) {
-                        Log.i(TAG, "onServiceDisconnected");
-                    }
-                }, audioDeviceInfo.getType());
-                this.bluetoothDevice = BluetoothAdapter.getDefaultAdapter().getRemoteDevice(mAddress);
+            if (isBluetooth) {
+                check();
+            }
+            if(deviceType != DeviceType.isSink){
+                if (!isBluetooth & !isValid()) {
+                    isBadParams = true;
+                    return;
+                }
             }
             this.mId = audioDeviceInfo.getType();
             this.mName = audioDeviceInfo.getProductName().toString();
@@ -102,6 +79,59 @@ public class AudioDeviceDescriptor {
             e.printStackTrace();
             isBadParams = true;
         }
+    }
+    private static final int CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO;
+
+    private static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
+
+
+    public void initParams(){
+        int[] rates = mAudioDeviceInfo.getSampleRates();
+        this.currRate = rates[rates.length - 1];
+        int[] channels = mAudioDeviceInfo.getChannelMasks();
+        this.curChannel = channels[channels.length -1];
+        int[] channelsCount = mAudioDeviceInfo.getChannelCounts();
+        this.channelsCount = channelsCount[channelsCount.length -1];
+        int[] encoding = mAudioDeviceInfo.getEncodings();
+        this.encoding =  encoding[encoding.length - 1];
+    }
+
+
+    public int getBuffSize() {
+        int buff = 0;
+        if (isBluetooth) {
+
+        } else {
+            if(deviceType == DeviceType.isSource){
+                buff = AudioRecord.getMinBufferSize(this.currRate, curChannel, encoding);
+            }else{
+                buff = AudioTrack.getMinBufferSize(this.currRate, curChannel, encoding);
+            }
+
+        }
+        return buff;
+    }
+
+    private boolean isValid() {
+        boolean b = mAudioDeviceInfo.getSampleRates().length > 0 && mAudioDeviceInfo.getChannelMasks().length > 0
+                && mAudioDeviceInfo.getChannelCounts().length > 0 && mAudioDeviceInfo.getEncodings().length > 0;
+        return b;
+    }
+
+
+
+    public AudioAttributes getAudioAttributes() {
+        return new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build();
+    }
+
+    public AudioFormat getAudioFormat() {
+        return new AudioFormat.Builder()
+                .setChannelMask(this.curChannel)
+                .setEncoding(this.encoding)
+                .setSampleRate(this.currRate)
+                .build();
     }
 
     private String getAddress(AudioDeviceInfo audioDeviceInfo) {
@@ -121,7 +151,50 @@ public class AudioDeviceDescriptor {
         return address;
     }
 
-    public int getCurrRate(){
+    private void check() throws IOException {
+        if (isBluetooth) {
+            //final UUID uuid = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
+            BluetoothAdapter bluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+            BluetoothDevice bluetoothDevice = bluetoothAdapter.getRemoteDevice(mAddress);
+            ParcelUuid[] Uuid = bluetoothDevice.getUuids();
+            BluetoothSocket bluetoothSocket = null;
+            mServiceListener = new MyServiceListener();
+            bluetoothAdapter.getProfileProxy(App.getAppContext(), mServiceListener, BluetoothProfile.A2DP);
+            int i = 0;
+            while (true) {
+                try {
+                    bluetoothSocket = bluetoothDevice.createInsecureRfcommSocketToServiceRecord(Uuid[i].getUuid());
+                    bluetoothSocket.connect();
+                    Log.e(TAG, "CONNECTION DONE!!!");
+                    return;
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    i++;
+                }
+            }
+
+                /*if (this.deviceType == DeviceType.isSink) {
+                    try {
+                        OutputStream outputStream = bluetoothSocket.getOutputStream();
+                        outputStream.write(1);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                } else if (this.deviceType == DeviceType.isSource) {
+                    byte[] b = new byte[1];
+                    try {
+                        InputStream inputStream = bluetoothSocket.getInputStream();
+                        inputStream.read(b);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }*/
+
+
+        }
+    }
+
+    public int getCurrRate() {
         return currRate;
     }
 
@@ -143,7 +216,7 @@ public class AudioDeviceDescriptor {
         return deviceType;
     }
 
-    public AudioDeviceInfo getAudioDeviceInfo(){
+    public AudioDeviceInfo getAudioDeviceInfo() {
         return mAudioDeviceInfo;
     }
 
@@ -197,6 +270,22 @@ public class AudioDeviceDescriptor {
                 return "WIRES_HEADSET";
             default:
                 return "UNKNOWN";
+        }
+    }
+
+    private class MyServiceListener implements ServiceListener {
+        @Override
+        public void onServiceConnected(int profile, BluetoothProfile proxy) {
+            if(proxy instanceof BluetoothA2dp){
+                BluetoothA2dp bluetoothA2dp = (BluetoothA2dp)proxy;
+            }
+            Log.i(TAG, "onServiceConnected");
+        }
+
+        @Override
+        public void onServiceDisconnected(int profile) {
+            Log.i(TAG, "onServiceDisconnected");
+
         }
     }
 }

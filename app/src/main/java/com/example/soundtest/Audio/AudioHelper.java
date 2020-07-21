@@ -1,5 +1,7 @@
 package com.example.soundtest.Audio;
 
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
 import android.content.Context;
 import android.media.AudioAttributes;
 import android.media.AudioDeviceCallback;
@@ -18,7 +20,6 @@ import com.example.soundtest.MainActivity;
 
 import java.util.ArrayList;
 
-import static android.media.AudioFormat.ENCODING_PCM_16BIT;
 import static android.media.AudioTrack.MODE_STREAM;
 
 
@@ -54,6 +55,7 @@ public class AudioHelper implements MainActivity.SwitchDeviceListener {
         if (INSTANCE == null) {
             synchronized (lock) {
                 INSTANCE = new AudioHelper();
+
             }
         }
         return INSTANCE;
@@ -61,6 +63,18 @@ public class AudioHelper implements MainActivity.SwitchDeviceListener {
 
     public void register(final Context mContext) {
         AudioManager mAudioManager = (AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE);
+        mAudioManager.registerAudioDeviceCallback(new AudioDeviceCallback() {
+            @Override
+            public void onAudioDevicesAdded(AudioDeviceInfo[] addedDevices) {
+                super.onAudioDevicesAdded(addedDevices);
+            }
+
+            @Override
+            public void onAudioDevicesRemoved(AudioDeviceInfo[] removedDevices) {
+                super.onAudioDevicesRemoved(removedDevices);
+            }
+        }, App.getHandler());
+
         audioDeviceCallback = new AudioDeviceCallback() {
             @Override
             public void onAudioDevicesAdded(AudioDeviceInfo[] addedDevices) {
@@ -85,9 +99,12 @@ public class AudioHelper implements MainActivity.SwitchDeviceListener {
     public void createAudioDeviceList(Context mContext) {
         AudioManager mAudioManager = (AudioManager) mContext.getSystemService(Context.AUDIO_SERVICE);
         AudioDeviceInfo[] allDevicesList = mAudioManager.getDevices(AudioManager.GET_DEVICES_ALL);
+
         if (allDevicesList == null) {
             return;
         }
+        inDevices.clear();
+        outDevices.clear();
         for (AudioDeviceInfo ad : allDevicesList) {
             if (ad.isSource()) {
                 inDevices.add(new AudioDeviceDescriptor(ad));
@@ -95,8 +112,12 @@ public class AudioHelper implements MainActivity.SwitchDeviceListener {
                 outDevices.add(new AudioDeviceDescriptor(ad));
             }
         }
-        currentIn = inDevices.get(0);
-        curentOut = outDevices.get(0);
+        if (inDevices.size() > 0) {
+            currentIn = inDevices.get(0);
+        }
+        if (outDevices.size() > 0) {
+            curentOut = outDevices.get(0);
+        }
     }
 
     public ArrayList<AudioDeviceDescriptor> getDeviceIn() {
@@ -155,17 +176,36 @@ public class AudioHelper implements MainActivity.SwitchDeviceListener {
 
     public void startPlay() {
         AudioManager mAudioManager = (AudioManager) App.getAppContext().getSystemService(Context.AUDIO_SERVICE);
+        boolean whithOut = curentOut != null;
+        if (whithOut) {
+
+        }
+        currentIn.initParams();
+        curentOut.initParams();
         final int minBuff = curentOut.getBuffSize();
         AudioAttributes audioAttributes = curentOut.getAudioAttributes();
         AudioFormat format = curentOut.getAudioFormat();
         mAudioTrack = new AudioTrack(audioAttributes, format, minBuff, MODE_STREAM, mAudioManager.generateAudioSessionId());
 
+        final int buffSize = currentIn.getBuffSize();
         int resource = MediaRecorder.AudioSource.MIC;
-        mAudioRecord = new AudioRecord(resource, currentIn.getCurrRate(), 12, 2, minBuff);
+        mAudioRecord = new AudioRecord(resource, currentIn.getCurrRate(), currentIn.getChannelConfig(), currentIn.getEncoding(), currentIn.getBuffSize());
         mAudioRecord.setPreferredDevice(curentOut.getAudioDeviceInfo());
         mAudioRecord.startRecording();
         mState = STATE.RUNNING.RUNNING;
-        handler.post(() ->{
+        while (mState == STATE.RUNNING) {
+            byte[] buff = new byte[buffSize];
+            int result = mAudioRecord.read(buff, 0, buffSize);
+            Log.i(TAG, "mAudioRecord read = " + result + "bytes");
+                        /*if (result > 0) {
+                            handler.postDelayed(() -> {
+                                mAudioTrack.write(buff, 0, buff.length);
+                                mAudioTrack.play();
+                            }, 1);
+                        }*/
+        }
+
+        /*handler.post(() -> {
             while (mState == STATE.RUNNING) {
                 byte[] buff = new byte[minBuff];
                 int result = mAudioRecord.read(buff, 0, minBuff);
@@ -181,14 +221,14 @@ public class AudioHelper implements MainActivity.SwitchDeviceListener {
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
-        });
+        });*/
     }
 
     public void stopPlay() {
         mState = STATE.IDLE;
         handler.removeCallbacksAndMessages(null);
         mAudioRecord.release();
-        mAudioTrack.release();
+        //mAudioTrack.release();
         mAudioRecord = null;
         mAudioTrack = null;
     }

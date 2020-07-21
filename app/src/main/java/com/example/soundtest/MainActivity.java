@@ -1,13 +1,18 @@
 package com.example.soundtest;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.hardware.camera2.CameraAccessException;
+import android.hardware.camera2.CameraManager;
 import android.os.Bundle;
 import android.view.View;
+import android.widget.Button;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 
@@ -21,6 +26,10 @@ public class MainActivity extends AppCompatActivity {
     private RadioGroup rgIn, rgOut;
     private Context mContext;
     private SwitchDeviceListener mSwitchDeviceListener;
+    private Button btnStart, btnStop;
+    private RunTimeReceiver mReceiver;
+    private final static int REQUEST_CAMERA_PERMISSION = 51;
+    private String[] ids;
 
     private RadioGroup.OnCheckedChangeListener mOnCheckedChangeListener = new RadioGroup.OnCheckedChangeListener() {
         @Override
@@ -39,11 +48,15 @@ public class MainActivity extends AppCompatActivity {
 
     public void onClickStart(View view) {
         if(AudioHelper.getInstance().getCurrentIn() != null && AudioHelper.getInstance().getCurentOut() != null){
+            btnStart.setEnabled(!btnStart.isEnabled());
+            btnStop.setEnabled(!btnStop.isEnabled());
             AudioHelper.getInstance().startPlay();
         }
 
     }
     public void onClickStop(View view) {
+        btnStart.setEnabled(!btnStart.isEnabled());
+        btnStop.setEnabled(!btnStop.isEnabled());
         AudioHelper.getInstance().stopPlay();
     }
 
@@ -52,10 +65,16 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         mContext = getApplicationContext();
+        mReceiver = new RunTimeReceiver();
+        mReceiver.register(this);
         checkRecordPermission();
+        AudioHelper.getInstance().register(mContext);
         mAudioHelper = AudioHelper.getInstance();
-        mAudioHelper.createAudioDeviceList(getApplicationContext());
+       /* mAudioHelper.createAudioDeviceList(getApplicationContext());*/
         setContentView(R.layout.activity_main);
+        btnStart = findViewById(R.id.btn_start);
+        btnStop = findViewById(R.id.btn_stop);
+        btnStop.setEnabled(!btnStop.isEnabled());
 
         rgIn = findViewById(R.id.rg_in);
         rgOut = findViewById(R.id.rg_out);
@@ -64,22 +83,50 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        ArrayList<AudioDeviceDescriptor> deviceIn = mAudioHelper.getDeviceIn();
-        ArrayList<AudioDeviceDescriptor> deviceOut = mAudioHelper.getDeviceOut();
-        if(deviceIn != null && deviceIn.size() > 0){
-            fiilRadioGroup(deviceIn, rgIn, true);
-        }
-        if(deviceOut != null && deviceOut.size() > 0){
-            fiilRadioGroup(deviceOut, rgOut, true);
-        }
-        AudioHelper.getInstance().register(mContext);
+        initUI(false);
         mSwitchDeviceListener = AudioHelper.getInstance();
-
         rgIn.setOnCheckedChangeListener(mOnCheckedChangeListener);
         rgOut.setOnCheckedChangeListener(mOnCheckedChangeListener);
+        if(ContextCompat.checkSelfPermission(App.getAppContext(), Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED){
+            getCamerasList();
+        }else{
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION);
+        }
+    }
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        if (requestCode == REQUEST_CAMERA_PERMISSION) {
+            if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                getCamerasList();
+            }
+        }
+    }
+
+    private void getCamerasList() {
+        CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+        try {
+            ids = manager.getCameraIdList();
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+        }
     }
 
 
+    public void initUI(boolean clear) {
+        if(clear){
+           rgIn.removeAllViews();
+           rgOut.removeAllViews();
+        }
+        mAudioHelper.createAudioDeviceList(getApplicationContext());
+        ArrayList<AudioDeviceDescriptor> deviceIn = mAudioHelper.getDeviceIn();
+        ArrayList<AudioDeviceDescriptor> deviceOut = mAudioHelper.getDeviceOut();
+        if(deviceIn != null && deviceIn.size() > 0){
+            fillRadioGroup(deviceIn, rgIn, true);
+        }
+        if(deviceOut != null && deviceOut.size() > 0){
+            fillRadioGroup(deviceOut, rgOut, true);
+        }
+    }
 
 
     @Override
@@ -92,6 +139,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         AudioHelper.getInstance().unregister(mContext);
         AudioHelper.getInstance().destroy();
+        mReceiver.unregister();
         super.onDestroy();
     }
 
@@ -105,12 +153,13 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void fiilRadioGroup(ArrayList<AudioDeviceDescriptor> devices, RadioGroup rg, boolean isFirstTime){
+    private void fillRadioGroup(ArrayList<AudioDeviceDescriptor> devices, RadioGroup rg, boolean isFirstTime){
         int i = 0;
         for(AudioDeviceDescriptor device : devices){
             if(device.isBadParams())
                 return;
             final RadioButton rb = new RadioButton(this);
+            String name = device.getName();
             rb.setText(device.getName());
             rb.setId(i);
             rg.addView(rb, i);
