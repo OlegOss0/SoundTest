@@ -35,10 +35,10 @@ public class AudioDeviceDescriptor {
     public enum DeviceType {isSink, isSource}
 
     private UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
-    private int currRate;
-    private int curChannel;
-    private int channelsCount;
-    private int encoding;
+    private int currRate = -1;
+    private int curChannel = -1;
+    private int channelsCount = -1;
+    private int encoding = -1;
     private int sessionId = -1;
     private UUID uuid;
     private final String TAG = this.getClass().getSimpleName();
@@ -87,13 +87,21 @@ public class AudioDeviceDescriptor {
 
     public void initParams(){
         int[] rates = mAudioDeviceInfo.getSampleRates();
-        this.currRate = rates[rates.length - 1];
+        if(rates.length > 1){
+            this.currRate = rates[rates.length - 1];
+        }
         int[] channels = mAudioDeviceInfo.getChannelMasks();
-        this.curChannel = channels[channels.length -1];
+        if(channels.length > 0){
+            this.curChannel = channels[channels.length -1];
+        }
         int[] channelsCount = mAudioDeviceInfo.getChannelCounts();
-        this.channelsCount = channelsCount[channelsCount.length -1];
+        if(channelsCount.length > 0){
+            this.channelsCount = channelsCount[channelsCount.length -1];
+        }
         int[] encoding = mAudioDeviceInfo.getEncodings();
-        this.encoding =  encoding[encoding.length - 1];
+        if(encoding.length > 0){
+            this.encoding =  encoding[encoding.length - 1];
+        }
     }
 
 

@@ -181,28 +181,30 @@ public class AudioHelper implements MainActivity.SwitchDeviceListener {
 
         }
         currentIn.initParams();
-        curentOut.initParams();
-        final int minBuff = curentOut.getBuffSize();
+        //curentOut.initParams();
+        //final int minBuff = curentOut.getBuffSize();
         AudioAttributes audioAttributes = curentOut.getAudioAttributes();
-        AudioFormat format = curentOut.getAudioFormat();
-        mAudioTrack = new AudioTrack(audioAttributes, format, minBuff, MODE_STREAM, mAudioManager.generateAudioSessionId());
+        //AudioFormat format = curentOut.getAudioFormat();
+        //mAudioTrack = new AudioTrack(audioAttributes, format, minBuff, MODE_STREAM, mAudioManager.generateAudioSessionId());
 
         final int buffSize = currentIn.getBuffSize();
         int resource = MediaRecorder.AudioSource.MIC;
         mAudioRecord = new AudioRecord(resource, currentIn.getCurrRate(), currentIn.getChannelConfig(), currentIn.getEncoding(), currentIn.getBuffSize());
-        mAudioRecord.setPreferredDevice(curentOut.getAudioDeviceInfo());
-        mAudioRecord.startRecording();
-        mState = STATE.RUNNING.RUNNING;
-        while (mState == STATE.RUNNING) {
-            byte[] buff = new byte[buffSize];
-            int result = mAudioRecord.read(buff, 0, buffSize);
-            Log.i(TAG, "mAudioRecord read = " + result + "bytes");
+        //mAudioRecord.setPreferredDevice(curentOut.getAudioDeviceInfo());
+        if(mAudioRecord.getState() == AudioRecord.STATE_INITIALIZED){
+            mAudioRecord.startRecording();
+            mState = STATE.RUNNING.RUNNING;
+            while (mState == STATE.RUNNING) {
+                byte[] buff = new byte[buffSize];
+                int result = mAudioRecord.read(buff, 0, buffSize);
+                Log.i(TAG, "mAudioRecord read = " + result + "bytes");
                         /*if (result > 0) {
                             handler.postDelayed(() -> {
                                 mAudioTrack.write(buff, 0, buff.length);
                                 mAudioTrack.play();
                             }, 1);
                         }*/
+            }
         }
 
         /*handler.post(() -> {

@@ -8,8 +8,15 @@ import androidx.core.content.ContextCompat;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.content.res.AssetFileDescriptor;
+import android.content.res.Resources;
 import android.hardware.camera2.CameraAccessException;
+import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
+import android.media.AudioManager;
+import android.media.MediaPlayer;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
@@ -19,6 +26,7 @@ import android.widget.RadioGroup;
 import com.example.soundtest.Audio.AudioDeviceDescriptor;
 import com.example.soundtest.Audio.AudioHelper;
 
+import java.io.IOException;
 import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity {
@@ -30,6 +38,8 @@ public class MainActivity extends AppCompatActivity {
     private RunTimeReceiver mReceiver;
     private final static int REQUEST_CAMERA_PERMISSION = 51;
     private String[] ids;
+    private boolean ringtonPlaying = false;
+    private MediaPlayer mMp;
 
     private RadioGroup.OnCheckedChangeListener mOnCheckedChangeListener = new RadioGroup.OnCheckedChangeListener() {
         @Override
@@ -70,7 +80,6 @@ public class MainActivity extends AppCompatActivity {
         checkRecordPermission();
         AudioHelper.getInstance().register(mContext);
         mAudioHelper = AudioHelper.getInstance();
-       /* mAudioHelper.createAudioDeviceList(getApplicationContext());*/
         setContentView(R.layout.activity_main);
         btnStart = findViewById(R.id.btn_start);
         btnStop = findViewById(R.id.btn_stop);
@@ -106,6 +115,9 @@ public class MainActivity extends AppCompatActivity {
         CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
         try {
             ids = manager.getCameraIdList();
+            for (String id : ids){
+                CameraCharacteristics info = manager.getCameraCharacteristics(id);
+            }
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
@@ -168,6 +180,43 @@ public class MainActivity extends AppCompatActivity {
             }
             i++;
         }
+    }
+
+    public void onClickPlayRington(View view) {
+        if(mMp == null){
+            mMp = new MediaPlayer();
+        }
+        if(!ringtonPlaying){
+            mMp.reset();
+            Uri rington = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE);
+            final Resources res = this.getResources();
+            final AssetFileDescriptor afd = res
+                    .openRawResourceFd(R.raw.ring);
+            try {
+                mMp.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(),
+                        afd.getLength());
+                final AudioManager audioManager = (AudioManager)getSystemService(Context.AUDIO_SERVICE);
+
+                if (audioManager.getStreamVolume(AudioManager.STREAM_ALARM) != 0) {
+                    mMp.setAudioStreamType(AudioManager.STREAM_ALARM);
+                    mMp.setLooping(true);
+                    mMp.prepare();
+                    mMp.start();
+                }
+                //mMp.start();
+                ringtonPlaying = true;
+
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }else{
+            mMp.stop();
+            mMp.release();
+            mMp = null;
+            ringtonPlaying = false;
+        }
+
+
     }
 
     public interface SwitchDeviceListener{
